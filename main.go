@@ -24,6 +24,8 @@ func main() {
 	const PORT = "8080"
 
 	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir(".")))
+
 	corsMux := middlewareCORS(mux)
 
 	server := &http.Server{

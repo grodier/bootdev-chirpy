@@ -21,10 +21,11 @@ func middlewareCORS(next http.Handler) http.Handler {
 }
 
 func main() {
+	const FILE_ROOT_PATH = "."
 	const PORT = "8080"
 
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir(".")))
+	mux.Handle("/", http.FileServer(http.Dir(FILE_ROOT_PATH)))
 
 	corsMux := middlewareCORS(mux)
 
@@ -33,6 +34,6 @@ func main() {
 		Handler: corsMux,
 	}
 
-	log.Printf("Serving on port: %s\n", PORT)
+	log.Printf("Serving files from %s on port: %s\n", FILE_ROOT_PATH, PORT)
 	log.Fatal(server.ListenAndServe())
 }

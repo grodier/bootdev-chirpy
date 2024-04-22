@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 )
 
 type apiConfig struct {
@@ -62,7 +63,7 @@ func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
 		Body string `json:"body"`
 	}
 	type returnVals struct {
-		Valid bool `json:"valid"`
+		CleanedBody string `json:"cleaned_body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -79,8 +80,24 @@ func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, returnVals{
-		Valid: true,
+		CleanedBody: cleanBody(params.Body),
 	})
+}
+
+func cleanBody(body string) string {
+	badWords := map[string]struct{}{
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
+	}
+	words := strings.Split(body, " ")
+	for i, word := range words {
+		if _, ok := badWords[strings.ToLower(word)]; ok {
+			words[i] = "****"
+		}
+	}
+
+	return strings.Join(words, " ")
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {

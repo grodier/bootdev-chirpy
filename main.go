@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -31,6 +32,7 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	mux.HandleFunc("GET /api/reset", apiCfg.handlerResetMetrics)
 
+	mux.HandleFunc("GET /api/chirps/{chirpId}", apiCfg.handlerGetChirpById)
 	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
 
@@ -45,6 +47,21 @@ func main() {
 
 	log.Printf("Serving files from %s on port: %s\n", FILE_ROOT_PATH, PORT)
 	log.Fatal(server.ListenAndServe())
+}
+
+func (cfg *apiConfig) handlerGetChirpById(w http.ResponseWriter, r *http.Request) {
+	chirpId := r.PathValue("chirpId")
+	id, err := strconv.Atoi(chirpId)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Invalid chirp id")
+	}
+
+	chirp, err := cfg.database.GetChirpById(id)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, err.Error())
+	}
+
+	respondWithJSON(w, http.StatusOK, chirp)
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {

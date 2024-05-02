@@ -1,250 +1,62 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"flag"
 	"log"
 	"net/http"
-	"sort"
-	"strconv"
-	"strings"
 
-	"golang.org/x/crypto/bcrypt"
+	"github.com/grodier/bootdev-chirpy/internal/database"
 )
 
 type apiConfig struct {
 	fileserverHits int
-	database       *DB
+	DB             *database.DB
 }
 
 func main() {
-	const FILE_ROOT_PATH = "."
-	const PORT = "8080"
-	var apiCfg apiConfig
-	var err error
+	const filepathRoot = "."
+	const port = "8080"
 
-	if apiCfg.database, err = NewDB("database.json"); err != nil {
+	db, err := database.NewDB("database.json")
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	mux := http.NewServeMux()
-	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(FILE_ROOT_PATH))))
-	mux.Handle("/app/*", fsHandler)
-
-	mux.HandleFunc("GET /api/healthz", handlerReadiness)
-	mux.HandleFunc("GET /api/reset", apiCfg.handlerResetMetrics)
-
-	mux.HandleFunc("GET /api/chirps/{chirpId}", apiCfg.handlerGetChirpById)
-	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
-	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
-
-	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
-
-	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
-
-	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
-
-	corsMux := middlewareCors(mux)
-
-	server := &http.Server{
-		Addr:    ":" + PORT,
-		Handler: corsMux,
-	}
-
-	log.Printf("Serving files from %s on port: %s\n", FILE_ROOT_PATH, PORT)
-	log.Fatal(server.ListenAndServe())
-}
-
-func (cfg *apiConfig) handlerGetChirpById(w http.ResponseWriter, r *http.Request) {
-	chirpId := r.PathValue("chirpId")
-	id, err := strconv.Atoi(chirpId)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Invalid chirp id")
-	}
-
-	chirp, err := cfg.database.GetChirpById(id)
-	if err != nil {
-		respondWithError(w, http.StatusNotFound, err.Error())
-	}
-
-	respondWithJSON(w, http.StatusOK, chirp)
-}
-
-func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
-	dbChirps, err := cfg.database.GetChirps()
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps")
-		return
-	}
-
-	chirps := []Chirp{}
-	for _, dbChirp := range dbChirps {
-		chirps = append(chirps, Chirp{
-			Id:   dbChirp.Id,
-			Body: dbChirp.Body,
-		})
-	}
-
-	sort.Slice(chirps, func(i, j int) bool {
-		return chirps[i].Id < chirps[j].Id
-	})
-
-	respondWithJSON(w, http.StatusOK, chirps)
-}
-
-func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
-	type parameters struct {
-		Body string `json:"body"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't decode paramaters")
-		return
-	}
-
-	if len(params.Body) > 140 {
-		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
-		return
-	}
-
-	chirp, err := cfg.database.CreateChirp(cleanBody(params.Body))
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error creating chirp")
-		return
-	}
-
-	respondWithJSON(w, http.StatusCreated, Chirp{
-		Id:   chirp.Id,
-		Body: chirp.Body,
-	})
-}
-
-func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
-	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
-		return
-	}
-
-	user, err := cfg.database.GetUserByEmail(params.Email)
-	if err != nil {
-		respondWithError(w, http.StatusNotFound, err.Error())
-	}
-
-	err = bcrypt.CompareHashAndPassword(user.Password, []byte(params.Password))
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-
-	respondWithJSON(w, http.StatusOK, struct {
-		Id    int    `json:"id"`
-		Email string `json:"email"`
-	}{
-		Id:    user.Id,
-		Email: user.Email,
-	})
-}
-
-func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
-	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
-		return
-	}
-
-	if _, err := cfg.database.GetUserByEmail(params.Email); err == nil {
-		respondWithError(w, http.StatusBadRequest, "Email already exists")
-	}
-
-	user, err := cfg.database.CreateUser(params.Email, params.Password)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error creating user")
-		return
-	}
-
-	respondWithJSON(w, http.StatusCreated, struct {
-		Id    int    `json:"id"`
-		Email string `json:"email"`
-	}{
-		Id:    user.Id,
-		Email: user.Email,
-	})
-}
-
-func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cfg.fileserverHits++
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf(`
-    <html>
-      <body>
-        <h1>Welcome, Chirpy Admin</h1>
-        <p>Chirpy has been visited %d times!</p>
-      </body>
-    <html>
-  `, cfg.fileserverHits)))
-}
-
-func cleanBody(body string) string {
-	badWords := map[string]struct{}{
-		"kerfuffle": {},
-		"sharbert":  {},
-		"fornax":    {},
-	}
-	words := strings.Split(body, " ")
-	for i, word := range words {
-		if _, ok := badWords[strings.ToLower(word)]; ok {
-			words[i] = "****"
+	dbg := flag.Bool("debug", false, "Enable debug mode")
+	flag.Parse()
+	if dbg != nil && *dbg {
+		err := db.ResetDB()
+		if err != nil {
+			log.Fatal(err)
 		}
 	}
 
-	return strings.Join(words, " ")
-}
+	apiCfg := apiConfig{
+		fileserverHits: 0,
+		DB:             db,
+	}
 
-func respondWithError(w http.ResponseWriter, code int, msg string) {
-	if code > 499 {
-		log.Printf("Responding with 5XX error: %s", msg)
-	}
-	type errorResponse struct {
-		Error string `json:"error"`
-	}
-	respondWithJSON(w, code, errorResponse{
-		Error: msg,
-	})
-}
+	mux := http.NewServeMux()
+	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
+	mux.Handle("/app/*", fsHandler)
 
-func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	data, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
-		return
+	mux.HandleFunc("GET /api/healthz", handlerReadiness)
+	mux.HandleFunc("GET /api/reset", apiCfg.handlerReset)
+
+	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	mux.HandleFunc("POST /api/users", apiCfg.handlerUsersCreate)
+
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerChirpsCreate)
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerChirpsRetrieve)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerChirpsGet)
+
+	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
 	}
-	w.WriteHeader(code)
-	w.Write(data)
+
+	log.Printf("Serving files from %s on port: %s\n", filepathRoot, port)
+	log.Fatal(srv.ListenAndServe())
 }

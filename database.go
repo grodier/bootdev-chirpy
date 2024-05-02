@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"sync"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type DB struct {
@@ -18,8 +20,9 @@ type Chirp struct {
 }
 
 type User struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
+	Id       int    `json:"id"`
+	Email    string `json:"email"`
+	Password []byte `json:"password"`
 }
 
 type DBStructure struct {
@@ -38,16 +41,22 @@ func NewDB(path string) (*DB, error) {
 	return db, err
 }
 
-func (db *DB) CreateUser(email string) (User, error) {
+func (db *DB) CreateUser(email string, password string) (User, error) {
 
 	structure, err := db.loadDB()
 	if err != nil {
 		return User{}, err
 	}
 
+	pw, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	if err != nil {
+		return User{}, err
+	}
+
 	user := User{
-		Id:    len(structure.Users) + 1,
-		Email: email,
+		Id:       len(structure.Users) + 1,
+		Email:    email,
+		Password: pw,
 	}
 
 	structure.Users[user.Id] = user
@@ -107,6 +116,21 @@ func (db *DB) GetChirpById(id int) (Chirp, error) {
 	}
 
 	return chirp, nil
+}
+
+func (db *DB) GetUserByEmail(email string) (User, error) {
+	structure, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+	for _, user := range structure.Users {
+		if user.Email == email {
+			return user, nil
+		}
+	}
+
+	return User{}, errors.New("User not found")
 }
 
 // ensureDB creates a new database file if it doesn't exist

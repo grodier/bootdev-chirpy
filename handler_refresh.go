@@ -29,12 +29,12 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if refreshToken.Exp.Before(time.Now()) {
+	if refreshToken.ExpiresAt.Before(time.Now()) {
 		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
-	jwt, err := auth.GenerateJWT(refreshToken.UserID, nil, cfg.JWTSecret)
+	jwt, err := auth.GenerateJWT(refreshToken.UserID, time.Hour, cfg.JWTSecret)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Issue generating token")
 		return

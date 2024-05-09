@@ -30,22 +30,11 @@ func (cfg *apiConfig) handlerUsersUpdate(w http.ResponseWriter, r *http.Request)
 
 	jwtToken := parts[1]
 
-	token, err := jwt.ParseWithClaims(jwtToken, &Claims{}, func(token *jwt.Token) (any, error) {
-		return []byte(cfg.JWTSecret), nil
-	})
-
+	subject, err := auth.ValidateJWT(jwtToken, cfg.JWTSecret)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Token not valid")
-		return
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate JWT")
 	}
-
-	userId, err := token.Claims.GetSubject()
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Invalid claims")
-		return
-	}
-
-	parsedUserId, err := strconv.Atoi(userId)
+	parsedUserId, err := strconv.Atoi(subject)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Invalid user id")
 		return

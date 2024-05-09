@@ -3,15 +3,15 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/grodier/bootdev-chirpy/internal/auth"
 )
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Password         string `json:"password"`
-		Email            string `json:"email"`
-		ExpiresInSeconds *int   `json:"expires_in_seconds,omitempty"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 
 	type response struct {
@@ -40,19 +40,19 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jwt, err := auth.GenerateJWT(user.ID, params.ExpiresInSeconds, cfg.JWTSecret)
+	jwt, err := auth.GenerateJWT(user.ID, time.Hour, cfg.JWTSecret)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Issue generating token")
 		return
 	}
 
-	refreshTokenString, err := auth.GenerateRefreshTokenString()
+	refreshToken, err := auth.GenerateRefreshTokenString()
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Server issue")
 		return
 	}
 
-	refreshToken, err := cfg.DB.CreateRefreshToken(refreshTokenString, user.ID)
+	err = cfg.DB.CreateRefreshToken(refreshToken, user.ID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Server issue")
 		return
@@ -64,6 +64,6 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 			Email: user.Email,
 		},
 		Token:        jwt,
-		RefreshToken: refreshToken.Token,
+		RefreshToken: refreshToken,
 	})
 }

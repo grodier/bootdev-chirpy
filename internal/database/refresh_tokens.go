@@ -3,30 +3,25 @@ package database
 import "time"
 
 type RefreshToken struct {
-	Token  string    `json:"token"`
-	UserID int       `json:"user_id"`
-	Exp    time.Time `json:"exp"`
+	Token     string    `json:"token"`
+	UserID    int       `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func (db *DB) CreateRefreshToken(token string, userId int) (RefreshToken, error) {
+func (db *DB) CreateRefreshToken(token string, userId int) error {
 	dbStructure, err := db.loadDB()
 	if err != nil {
-		return RefreshToken{}, err
+		return err
 	}
 
 	refreshToken := RefreshToken{
-		Token:  token,
-		UserID: userId,
-		Exp:    time.Now().Add(time.Hour * 24 * 60),
+		Token:     token,
+		UserID:    userId,
+		ExpiresAt: time.Now().Add(time.Hour),
 	}
 	dbStructure.RefreshTokens[token] = refreshToken
 
-	err = db.writeDB(dbStructure)
-	if err != nil {
-		return RefreshToken{}, err
-	}
-
-	return refreshToken, nil
+	return db.writeDB(dbStructure)
 }
 
 func (db *DB) GetRefreshToken(token string) (RefreshToken, error) {

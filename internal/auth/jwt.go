@@ -3,33 +3,22 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func GenerateJWT(userId int, expiresInSeconds *int, secret string) (string, error) {
-	expires := 60 * 60 * 24 // one day sec * min * hour
-	if expiresInSeconds != nil {
-		if *expiresInSeconds < expires {
-			expires = *expiresInSeconds
-		}
-	}
-	now := time.Now()
+func GenerateJWT(userId int, expiresIn time.Duration, secret string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
 		Issuer:    "chirpy",
-		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(now.Add(time.Second * time.Duration(expires))),
+		IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(expiresIn)),
 		Subject:   strconv.Itoa(userId),
 	})
 
-	signedToken, err := token.SignedString([]byte(secret))
-	if err != nil {
-		return "", err
-	}
-
-	return signedToken, nil
+	return token.SignedString([]byte(secret))
 }
 
 func GenerateRefreshTokenString() (string, error) {
@@ -41,5 +30,33 @@ func GenerateRefreshTokenString() (string, error) {
 
 	refreshTokenString := hex.EncodeToString(bytes)
 	return refreshTokenString, nil
+}
 
+func ValidateJWT(tokenString, tokenSecret string) (string, error) {
+	claimsStruct := jwt.RegisteredClaims{}
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		&claimsStruct,
+		func(token *jwt.Token) (any, error) {
+			return []byte(tokenSecret), nil
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	userIDString, err := token.Claims.GetSubject()
+	if err != nil {
+		return "", err
+	}
+
+	issuer, err := token.Claims.GetIssuer()
+	if err != nil {
+		return "", err
+	}
+	if issuer != string("chirpy") {
+		return "", errors.New("invalid issuer")
+	}
+
+	return userIDString, nil
 }

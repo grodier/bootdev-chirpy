@@ -26,5 +26,5 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	w.WriteHeader(http.StatusNoContent)
 }

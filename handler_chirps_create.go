@@ -4,22 +4,49 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+
+	"github.com/grodier/bootdev-chirpy/internal/auth"
 )
 
 type Chirp struct {
-	ID   int    `json:"id"`
-	Body string `json:"body"`
+	ID       int    `json:"id"`
+	Body     string `json:"body"`
+	AuthorId int    `json:"author_id"`
 }
 
 func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		respondWithError(w, http.StatusUnauthorized, "Authorization header is required")
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		respondWithError(w, http.StatusUnauthorized, "Authorization header must be in the format 'Bearer {token}'")
+		return
+	}
+
+	jwtToken := parts[1]
+
+	subject, err := auth.ValidateJWT(jwtToken, cfg.JWTSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate JWT")
+	}
+	parsedUserId, err := strconv.Atoi(subject)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Invalid user id")
+		return
+	}
 	type parameters struct {
 		Body string `json:"body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
 		return
@@ -31,15 +58,16 @@ func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	chirp, err := cfg.DB.CreateChirp(cleaned)
+	chirp, err := cfg.DB.CreateChirp(cleaned, parsedUserId)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp")
 		return
 	}
 
 	respondWithJSON(w, http.StatusCreated, Chirp{
-		ID:   chirp.ID,
-		Body: chirp.Body,
+		ID:       chirp.ID,
+		Body:     chirp.Body,
+		AuthorId: chirp.AuthorId,
 	})
 }
 

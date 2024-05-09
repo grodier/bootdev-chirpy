@@ -19,7 +19,7 @@ func (cfg *apiConfig) handlerPolka(w http.ResponseWriter, r *http.Request) {
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil || params.Event != "user.upgraded" {
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
